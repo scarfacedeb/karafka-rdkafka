@@ -247,8 +247,6 @@ module Rdkafka
         message = Rdkafka::Bindings::Message.new(message_ptr)
         delivery_handle_ptr_address = message[:_private].address
         if delivery_handle = Rdkafka::Producer::DeliveryHandle.remove(delivery_handle_ptr_address)
-          topic_name = Rdkafka::Bindings.rd_kafka_topic_name(message[:rkt])
-
           # Update delivery handle
           delivery_handle[:response] = message[:err]
           delivery_handle[:partition] = message[:partition]
@@ -258,6 +256,12 @@ module Rdkafka
           # would otherwise be allocated and retained for every message.
 
           begin
+            topic_name = if message[:rkt].null?
+              delivery_handle.topic
+            else
+              Rdkafka::Bindings.rd_kafka_topic_name(message[:rkt])
+            end
+
             # Call delivery callback on opaque
             if opaque = Rdkafka::Config.opaques[opaque_ptr.to_i]
               opaque.call_delivery_callback(

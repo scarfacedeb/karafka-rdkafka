@@ -1,6 +1,38 @@
 # frozen_string_literal: true
 
 RSpec.describe Rdkafka::Callbacks do
+  describe Rdkafka::Callbacks::DeliveryCallback do
+    let(:handle) { Rdkafka::Producer::DeliveryHandle.new }
+    let(:message) { Rdkafka::Bindings::Message.new }
+    let(:opaque_ptr) { FFI::MemoryPointer.new(:char) }
+    let(:opaque) { instance_double(Rdkafka::Opaque) }
+    let(:reports) { [] }
+
+    before do
+      handle.topic = TestTopics.unique
+      handle[:pending] = true
+      Rdkafka::Producer::DeliveryHandle.register(handle)
+      message[:_private] = handle.to_ptr
+      message[:rkt] = FFI::Pointer::NULL
+      Rdkafka::Config.opaques[opaque_ptr.to_i] = opaque
+      allow(opaque).to receive(:call_delivery_callback) { |report, _handle| reports << report }
+      allow(Rdkafka::Bindings).to receive(:rd_kafka_topic_name)
+    end
+
+    after do
+      Rdkafka::Config.opaques.delete(opaque_ptr.to_i)
+      Rdkafka::Producer::DeliveryHandle.remove(handle.to_ptr.address)
+    end
+
+    it "uses the handle's topic when the native reference is null" do
+      described_class.call(nil, message.to_ptr, opaque_ptr)
+
+      expect(Rdkafka::Bindings).not_to have_received(:rd_kafka_topic_name)
+      expect(reports.fetch(0).topic).to eq(handle.topic)
+      expect(handle.pending?).to be false
+    end
+  end
+
   describe Rdkafka::Callbacks::BackgroundEventCallback do
     let(:event_ptr) { FFI::MemoryPointer.new(:int) }
 
